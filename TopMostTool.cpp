@@ -100,7 +100,7 @@ static void ShowBalloon(HWND hWnd, DWORD dwInfoFlags, const wchar_t* title, cons
 	nid.dwInfoFlags = dwInfoFlags | NIIF_NOSOUND;
 	StringCchCopy(nid.szInfo, ARRAYSIZE(nid.szInfo), msg);
 	StringCchCopy(nid.szInfoTitle, ARRAYSIZE(nid.szInfoTitle), title);
-	nid.uTimeout = 3000;
+	nid.uTimeout = 1000;
 	Shell_NotifyIcon(NIM_MODIFY, &nid);
 }
 
@@ -121,7 +121,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"TopMostTool");
 		ret = Shell_NotifyIcon(NIM_ADD, &nid);
 		//ret = Shell_NotifyIcon(NIM_SETVERSION, &nid);
-		ShowBalloon(hWnd, NIIF_INFO, L"TopMostTool", L"Pause で最前面にします");
+		ShowBalloon(hWnd, NIIF_INFO, L"TopMostTool", L"Pause キーで最前面にします");
 		break;
 	}
 	case WM_DESTROY:
