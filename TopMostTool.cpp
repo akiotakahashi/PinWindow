@@ -62,7 +62,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_TOPMOSTTOOL);
 	wcex.lpszClassName = szWindowClass;
-	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_TOPMOSTTOOL));
 	return RegisterClassExW(&wcex);
 }
 
@@ -91,7 +91,8 @@ static NOTIFYICONDATA CreateNotifyIconData(HWND hWnd, UINT uFlags) {
 	nid.cbSize = sizeof(nid);
 	nid.hWnd = hWnd;
 	nid.uVersion = NOTIFYICON_VERSION_4;
-	nid.uFlags = uFlags | NIF_GUID;
+	nid.uFlags = uFlags | NIF_TIP | NIF_GUID;
+	StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"TopMostTool");
 	return nid;
 }
 
@@ -116,9 +117,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			wprintf(L"%ls\n", ret ? L"OK" : L"NG");
 		}
 		//
-		auto nid = CreateNotifyIconData(hWnd, NIF_ICON | NIF_TIP);
-		LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_SMALL), LIM_SMALL, &(nid.hIcon));
-		StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"TopMostTool");
+		auto nid = CreateNotifyIconData(hWnd, NIF_ICON);
+		LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_TOPMOSTTOOL), LIM_SMALL, &(nid.hIcon));
 		ret = Shell_NotifyIcon(NIM_ADD, &nid);
 		//ret = Shell_NotifyIcon(NIM_SETVERSION, &nid);
 		ShowBalloon(hWnd, NIIF_INFO, L"TopMostTool", L"Pause ÉLÅ[Ç≈ç≈ëOñ Ç…ÇµÇ‹Ç∑");
