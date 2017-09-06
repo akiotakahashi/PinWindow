@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "TopMostTool.h"
 
+#define WM_TRAYICON (WM_USER + 1)
+
 #define HOT_KEY_ID 100001
 
 #define MAX_LOADSTRING 100
@@ -91,8 +93,9 @@ static NOTIFYICONDATA CreateNotifyIconData(HWND hWnd, UINT uFlags) {
 	nid.cbSize = sizeof(nid);
 	nid.hWnd = hWnd;
 	nid.uVersion = NOTIFYICON_VERSION_4;
-	nid.uFlags = uFlags | NIF_TIP | NIF_GUID;
+	nid.uFlags = uFlags | NIF_TIP | NIF_GUID | NIF_MESSAGE;
 	StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"TopMostTool");
+	nid.uCallbackMessage = WM_TRAYICON;
 	return nid;
 }
 
@@ -122,6 +125,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		ret = Shell_NotifyIcon(NIM_ADD, &nid);
 		//ret = Shell_NotifyIcon(NIM_SETVERSION, &nid);
 		ShowBalloon(hWnd, NIIF_INFO, L"TopMostTool", L"Pause ÉLÅ[Ç≈ç≈ëOñ Ç…ÇµÇ‹Ç∑");
+		break;
+	}
+	case WM_CLOSE:
+	{
+		DestroyWindow(hWnd);
 		break;
 	}
 	case WM_DESTROY:
@@ -207,6 +215,37 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		}
 		break;
+	case WM_TRAYICON:
+	{
+		switch (lParam) {
+		case WM_RBUTTONDOWN:
+		{
+			// should SetForegroundWindow according
+			// to original poster so the popup shows on top
+			//SetForegroundWindow(hwnd);
+
+			// Get current mouse position.
+			POINT curPoint;
+			GetCursorPos(&curPoint);
+
+			// Load the context menu
+			HMENU hMenu = GetSubMenu(LoadMenu(NULL, MAKEINTRESOURCE(IDC_TOPMOSTTOOL)), 0);
+
+			// TrackPopupMenu blocks the app until TrackPopupMenu returns
+			/*
+			UINT clicked = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY,
+				curPoint.x, curPoint.y, 0, hWnd, NULL);
+			if (clicked == IDM_EXIT) {
+				DestroyWindow(hWnd);
+				return 0;
+			}
+			*/
+			TrackPopupMenu(hMenu, 0, curPoint.x, curPoint.y, 0, hWnd, NULL);
+			break;
+		}
+		}
+		break;
+	}
 	default:
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
