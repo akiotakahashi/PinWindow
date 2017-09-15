@@ -29,7 +29,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	// グローバル文字列を初期化しています。
 	LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
 	LoadStringW(hInstance, IDC_TOPMOSTTOOL, szWindowClass, MAX_LOADSTRING);
-	
+
 	// アプリケーションの初期化を実行します:
 	MyRegisterClass(hInstance);
 	if(!InitInstance(hInstance, nCmdShow))
@@ -87,25 +87,71 @@ void PaintWindow(HWND hWnd, PAINTSTRUCT& ps, HDC hdc)
 {
 }
 
-static NOTIFYICONDATA CreateNotifyIconData(HWND hWnd, UINT uFlags) {
+static NOTIFYICONDATA CreateNotifyIconData(HWND hWnd, UINT uFlags = 0)
+{
 	static const GUID NID_GUID = { 0x9b16b146, 0x7936, 0x46ff,{ 0x84, 0x95, 0xe3, 0x1, 0x35, 0xcd, 0xd3, 0xab } };
 	NOTIFYICONDATA nid = {};
 	nid.cbSize = sizeof(nid);
 	nid.hWnd = hWnd;
 	nid.uVersion = NOTIFYICON_VERSION_4;
-	nid.uFlags = uFlags | NIF_TIP | NIF_GUID | NIF_MESSAGE;
-	StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"TopMostTool");
-	nid.uCallbackMessage = WM_TRAYICON;
+	nid.uFlags = uFlags | NIF_SHOWTIP | NIF_GUID;
+	nid.guidItem = NID_GUID;
 	return nid;
 }
 
-static void ShowBalloon(HWND hWnd, DWORD dwInfoFlags, const wchar_t* title, const wchar_t* msg) {
+static BOOL ShowBalloon(HWND hWnd, DWORD dwInfoFlags, const wchar_t* title, const wchar_t* msg)
+{
 	auto nid = CreateNotifyIconData(hWnd, NIF_INFO);
 	nid.dwInfoFlags = dwInfoFlags | NIIF_NOSOUND;
 	StringCchCopy(nid.szInfo, ARRAYSIZE(nid.szInfo), msg);
 	StringCchCopy(nid.szInfoTitle, ARRAYSIZE(nid.szInfoTitle), title);
 	nid.uTimeout = 1000;
-	Shell_NotifyIcon(NIM_MODIFY, &nid);
+	return Shell_NotifyIcon(NIM_MODIFY, &nid);
+}
+
+static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
+{
+	// register hot-key
+	{
+		auto ret = RegisterHotKey(hWnd, HOT_KEY_ID, MOD_NOREPEAT, VK_PAUSE);
+		if(!ret) {
+			errormsg = L"ホットキーの登録に失敗しました。";
+			return false;
+		}
+	}
+	// clear a old icon if exists
+	{
+		auto nid = CreateNotifyIconData(hWnd);
+		Shell_NotifyIcon(NIM_DELETE, &nid);
+	}
+	// add a system tray icon
+	{
+		auto nid = CreateNotifyIconData(hWnd, NIF_MESSAGE | NIF_TIP | NIF_ICON);
+		nid.uCallbackMessage = WM_TRAYICON;
+		StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"TopMostTool");
+		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_TOPMOSTTOOL), LIM_SMALL, &(nid.hIcon));
+		if(FAILED(hr)) {
+			errormsg = L"アイコンが読み込めません。";
+			return false;
+		}
+		auto ret = Shell_NotifyIcon(NIM_ADD, &nid);
+		if(!ret) {
+			errormsg = L"トレイアイコンが追加できませんでした。";
+			return false;
+		}
+		ret = Shell_NotifyIcon(NIM_SETVERSION, &nid);
+		if(!ret) {
+			errormsg = L"トレイアイコンバージョンの設定に失敗しました。";
+			return false;
+		}
+		ret = ShowBalloon(hWnd, NIIF_INFO, L"TopMostTool", L"Pause キーで最前面にします");
+		if(!ret) {
+			errormsg = L"バルーン通知の表示に失敗しました。";
+			return false;
+		}
+	}
+	//
+	return true;
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -114,17 +160,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_CREATE:
 	{
-		//
-		auto ret = RegisterHotKey(hWnd, HOT_KEY_ID, MOD_NOREPEAT, VK_PAUSE);
-		if(!ret) {
-			wprintf(L"%ls\n", ret ? L"OK" : L"NG");
+		const wchar_t* errmsg = nullptr;
+		SetLastError(0);
+		auto ok = InitializeApp(hWnd, errmsg);
+		if(!ok) {
+			auto errcode = GetLastError();
+			LPVOID lpMsgBuf = NULL;
+			auto len = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+				NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&lpMsgBuf, 0, NULL);
+			if(len == 0) {
+				const int SIZE = 256;
+				lpMsgBuf = LocalAlloc(LMEM_FIXED, SIZE);
+				wcscpy_s((wchar_t*)lpMsgBuf, SIZE / sizeof(wchar_t), L"エラー");
+			}
+			MessageBox(hWnd, errmsg, (const wchar_t*)lpMsgBuf, MB_OK | MB_ICONERROR);
+			LocalFree(lpMsgBuf);
+			PostQuitMessage(1);
+			return 0;
 		}
-		//
-		auto nid = CreateNotifyIconData(hWnd, NIF_ICON);
-		LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_TOPMOSTTOOL), LIM_SMALL, &(nid.hIcon));
-		ret = Shell_NotifyIcon(NIM_ADD, &nid);
-		//ret = Shell_NotifyIcon(NIM_SETVERSION, &nid);
-		ShowBalloon(hWnd, NIIF_INFO, L"TopMostTool", L"Pause キーで最前面にします");
 		break;
 	}
 	case WM_CLOSE:
@@ -135,7 +188,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_DESTROY:
 	{
 		UnregisterHotKey(hWnd, HOT_KEY_ID);
-		auto nid = CreateNotifyIconData(hWnd, NIF_ICON | NIF_TIP);
+		auto nid = CreateNotifyIconData(hWnd);
 		Shell_NotifyIcon(NIM_DELETE, &nid);
 		PostQuitMessage(0);
 		break;
@@ -217,29 +270,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_TRAYICON:
 	{
-		switch (lParam) {
+		switch(lParam) {
+		case NIN_SELECT:
+		case NIN_KEYSELECT:
+		case WM_CONTEXTMENU:
 		case WM_RBUTTONDOWN:
 		{
-			// should SetForegroundWindow according
-			// to original poster so the popup shows on top
-			//SetForegroundWindow(hwnd);
-
-			// Get current mouse position.
 			POINT curPoint;
 			GetCursorPos(&curPoint);
-
-			// Load the context menu
 			HMENU hMenu = GetSubMenu(LoadMenu(NULL, MAKEINTRESOURCE(IDC_TOPMOSTTOOL)), 0);
-
-			// TrackPopupMenu blocks the app until TrackPopupMenu returns
-			/*
-			UINT clicked = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY,
-				curPoint.x, curPoint.y, 0, hWnd, NULL);
-			if (clicked == IDM_EXIT) {
-				DestroyWindow(hWnd);
-				return 0;
-			}
-			*/
 			TrackPopupMenu(hMenu, 0, curPoint.x, curPoint.y, 0, hWnd, NULL);
 			break;
 		}
