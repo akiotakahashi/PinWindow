@@ -128,7 +128,7 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 	{
 		auto nid = CreateNotifyIconData(hWnd, NIF_MESSAGE | NIF_TIP | NIF_ICON);
 		nid.uCallbackMessage = WM_TRAYICON;
-		StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"TopMostTool");
+		StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"TopOfTheDesktop");
 		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_TOPMOSTTOOL), LIM_SMALL, &(nid.hIcon));
 		if(FAILED(hr)) {
 			errormsg = L"アイコンが読み込めません。";
@@ -144,7 +144,7 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 			errormsg = L"トレイアイコンバージョンの設定に失敗しました。";
 			return false;
 		}
-		ret = ShowBalloon(hWnd, NIIF_INFO, L"TopMostTool", L"Pause キーで最前面にします");
+		ret = ShowBalloon(hWnd, NIIF_INFO, L"TopOfTheDesktop", L"Pause キーで最前面にします");
 		if(!ret) {
 			errormsg = L"バルーン通知の表示に失敗しました。";
 			return false;
