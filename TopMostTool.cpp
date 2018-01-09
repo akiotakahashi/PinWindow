@@ -93,8 +93,9 @@ static NOTIFYICONDATA CreateNotifyIconData(HWND hWnd, UINT uFlags = 0)
 	NOTIFYICONDATA nid = {};
 	nid.cbSize = sizeof(nid);
 	nid.hWnd = hWnd;
+	nid.uID = 0;
 	nid.uVersion = NOTIFYICON_VERSION_4;
-	nid.uFlags = uFlags | NIF_SHOWTIP | NIF_GUID;
+	nid.uFlags = uFlags | NIF_SHOWTIP;// | NIF_GUID;
 	nid.guidItem = NID_GUID;
 	return nid;
 }
