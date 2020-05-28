@@ -59,12 +59,12 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
 	wcex.hInstance = hInstance;
-	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_TOPMOSTTOOL));
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_DOLPHIN));
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_TOPMOSTTOOL);
 	wcex.lpszClassName = szWindowClass;
-	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_TOPMOSTTOOL));
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_DOLPHIN));
 	return RegisterClassExW(&wcex);
 }
 
@@ -131,8 +131,8 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 	{
 		auto nid = CreateNotifyIconData(hWnd, NIF_MESSAGE | NIF_TIP | NIF_ICON);
 		nid.uCallbackMessage = WM_TRAYICON;
-		StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"TopOfTheDesktop");
-		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_TOPMOSTTOOL), LIM_SMALL, &(nid.hIcon));
+		StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), szTitle);
+		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_DOLPHIN), LIM_SMALL, &(nid.hIcon));
 		if(FAILED(hr)) {
 			errormsg = L"アイコンが読み込めません。";
 			return false;
@@ -147,7 +147,7 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 			errormsg = L"トレイアイコンバージョンの設定に失敗しました。";
 			return false;
 		}
-		ret = ShowBalloon(hWnd, NIIF_INFO, L"TopOfTheDesktop", L"Pause または Win+Del で最前面にします");
+		ret = ShowBalloon(hWnd, NIIF_INFO, szTitle, L"Pause か Win+Del で最前面にします👍");
 		if(!ret) {
 			errormsg = L"バルーン通知の表示に失敗しました。";
 			return false;

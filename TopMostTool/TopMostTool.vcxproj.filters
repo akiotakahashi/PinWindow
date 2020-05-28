@@ -42,10 +42,10 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="small.ico">
+    <Image Include="TopMostTool.ico">
       <Filter>リソース ファイル</Filter>
     </Image>
-    <Image Include="TopMostTool.ico">
+    <Image Include="summer-13.ico">
       <Filter>リソース ファイル</Filter>
     </Image>
   </ItemGroup>
