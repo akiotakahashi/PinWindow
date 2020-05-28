@@ -1,4 +1,4 @@
-#include "stdafx.h"
+ï»¿#include "stdafx.h"
 #include "TopMostTool.h"
 
 #define WM_TRAYICON (WM_USER + 1)
@@ -7,12 +7,12 @@
 
 #define MAX_LOADSTRING 100
 
-// ƒOƒ[ƒoƒ‹•Ï”:
-HINSTANCE hInst;                                // Œ»İ‚ÌƒCƒ“ƒ^[ƒtƒFƒCƒX
-WCHAR szTitle[MAX_LOADSTRING];                  // ƒ^ƒCƒgƒ‹ ƒo[‚ÌƒeƒLƒXƒg
-WCHAR szWindowClass[MAX_LOADSTRING];            // ƒƒCƒ“ ƒEƒBƒ“ƒhƒE ƒNƒ‰ƒX–¼
+// ã‚°ãƒ­ãƒ¼ãƒãƒ«å¤‰æ•°:
+HINSTANCE hInst;                                // ç¾åœ¨ã®ã‚¤ãƒ³ã‚¿ãƒ¼ãƒ•ã‚§ã‚¤ã‚¹
+WCHAR szTitle[MAX_LOADSTRING];                  // ã‚¿ã‚¤ãƒˆãƒ« ãƒãƒ¼ã®ãƒ†ã‚­ã‚¹ãƒˆ
+WCHAR szWindowClass[MAX_LOADSTRING];            // ãƒ¡ã‚¤ãƒ³ ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ ã‚¯ãƒ©ã‚¹å
 
-// ‚±‚ÌƒR[ƒh ƒ‚ƒWƒ…[ƒ‹‚ÉŠÜ‚Ü‚ê‚éŠÖ”‚ÌéŒ¾‚ğ“]‘—‚µ‚Ü‚·:
+// ã“ã®ã‚³ãƒ¼ãƒ‰ ãƒ¢ã‚¸ãƒ¥ãƒ¼ãƒ«ã«å«ã¾ã‚Œã‚‹é–¢æ•°ã®å®£è¨€ã‚’è»¢é€ã—ã¾ã™:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -26,11 +26,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
-	// ƒOƒ[ƒoƒ‹•¶š—ñ‚ğ‰Šú‰»‚µ‚Ä‚¢‚Ü‚·B
+	// ã‚°ãƒ­ãƒ¼ãƒãƒ«æ–‡å­—åˆ—ã‚’åˆæœŸåŒ–ã—ã¦ã„ã¾ã™ã€‚
 	LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
 	LoadStringW(hInstance, IDC_TOPMOSTTOOL, szWindowClass, MAX_LOADSTRING);
 
-	// ƒAƒvƒŠƒP[ƒVƒ‡ƒ“‚Ì‰Šú‰»‚ğÀs‚µ‚Ü‚·:
+	// ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ã®åˆæœŸåŒ–ã‚’å®Ÿè¡Œã—ã¾ã™:
 	MyRegisterClass(hInstance);
 	if(!InitInstance(hInstance, nCmdShow))
 	{
@@ -70,7 +70,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-	hInst = hInstance; // ƒOƒ[ƒoƒ‹•Ï”‚ÉƒCƒ“ƒXƒ^ƒ“ƒXˆ—‚ğŠi”[‚µ‚Ü‚·B
+	hInst = hInstance; // ã‚°ãƒ­ãƒ¼ãƒãƒ«å¤‰æ•°ã«ã‚¤ãƒ³ã‚¹ã‚¿ãƒ³ã‚¹å‡¦ç†ã‚’æ ¼ç´ã—ã¾ã™ã€‚
 	auto hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT, CW_USEDEFAULT, 320, 240,
 		nullptr, nullptr, hInstance, nullptr);
@@ -114,9 +114,11 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 {
 	// register hot-key
 	{
-		auto ret = RegisterHotKey(hWnd, HOT_KEY_ID, MOD_NOREPEAT, VK_PAUSE);
+		BOOL ret = TRUE;
+		ret &= RegisterHotKey(hWnd, HOT_KEY_ID, MOD_NOREPEAT, VK_PAUSE);
+		ret &= RegisterHotKey(hWnd, HOT_KEY_ID, MOD_NOREPEAT | MOD_WIN, VK_DELETE);
 		if(!ret) {
-			errormsg = L"ƒzƒbƒgƒL[‚Ì“o˜^‚É¸”s‚µ‚Ü‚µ‚½B";
+			errormsg = L"ãƒ›ãƒƒãƒˆã‚­ãƒ¼ã®ç™»éŒ²ã«å¤±æ•—ã—ã¾ã—ãŸã€‚";
 			return false;
 		}
 	}
@@ -132,22 +134,22 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 		StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"TopOfTheDesktop");
 		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_TOPMOSTTOOL), LIM_SMALL, &(nid.hIcon));
 		if(FAILED(hr)) {
-			errormsg = L"ƒAƒCƒRƒ“‚ª“Ç‚İ‚ß‚Ü‚¹‚ñB";
+			errormsg = L"ã‚¢ã‚¤ã‚³ãƒ³ãŒèª­ã¿è¾¼ã‚ã¾ã›ã‚“ã€‚";
 			return false;
 		}
 		auto ret = Shell_NotifyIcon(NIM_ADD, &nid);
 		if(!ret) {
-			errormsg = L"ƒgƒŒƒCƒAƒCƒRƒ“‚ª’Ç‰Á‚Å‚«‚Ü‚¹‚ñ‚Å‚µ‚½B";
+			errormsg = L"ãƒˆãƒ¬ã‚¤ã‚¢ã‚¤ã‚³ãƒ³ãŒè¿½åŠ ã§ãã¾ã›ã‚“ã§ã—ãŸã€‚";
 			return false;
 		}
 		ret = Shell_NotifyIcon(NIM_SETVERSION, &nid);
 		if(!ret) {
-			errormsg = L"ƒgƒŒƒCƒAƒCƒRƒ“ƒo[ƒWƒ‡ƒ“‚Ìİ’è‚É¸”s‚µ‚Ü‚µ‚½B";
+			errormsg = L"ãƒˆãƒ¬ã‚¤ã‚¢ã‚¤ã‚³ãƒ³ãƒãƒ¼ã‚¸ãƒ§ãƒ³ã®è¨­å®šã«å¤±æ•—ã—ã¾ã—ãŸã€‚";
 			return false;
 		}
-		ret = ShowBalloon(hWnd, NIIF_INFO, L"TopOfTheDesktop", L"Pause ƒL[‚ÅÅ‘O–Ê‚É‚µ‚Ü‚·");
+		ret = ShowBalloon(hWnd, NIIF_INFO, L"TopOfTheDesktop", L"Pause ã¾ãŸã¯ Win+Del ã§æœ€å‰é¢ã«ã—ã¾ã™");
 		if(!ret) {
-			errormsg = L"ƒoƒ‹[ƒ“’Ê’m‚Ì•\¦‚É¸”s‚µ‚Ü‚µ‚½B";
+			errormsg = L"ãƒãƒ«ãƒ¼ãƒ³é€šçŸ¥ã®è¡¨ç¤ºã«å¤±æ•—ã—ã¾ã—ãŸã€‚";
 			return false;
 		}
 	}
@@ -172,7 +174,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			if(len == 0) {
 				const int SIZE = 256;
 				lpMsgBuf = LocalAlloc(LMEM_FIXED, SIZE);
-				wcscpy_s((wchar_t*)lpMsgBuf, SIZE / sizeof(wchar_t), L"ƒGƒ‰[");
+				wcscpy_s((wchar_t*)lpMsgBuf, SIZE / sizeof(wchar_t), L"ã‚¨ãƒ©ãƒ¼");
 			}
 			MessageBox(hWnd, errmsg, (const wchar_t*)lpMsgBuf, MB_OK | MB_ICONERROR);
 			LocalFree(lpMsgBuf);
@@ -197,7 +199,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_COMMAND:
 	{
 		auto wmId = LOWORD(wParam);
-		// ‘I‘ğ‚³‚ê‚½ƒƒjƒ…[‚Ì‰ğÍ:
+		// é¸æŠã•ã‚ŒãŸãƒ¡ãƒ‹ãƒ¥ãƒ¼ã®è§£æ:
 		switch(wmId)
 		{
 		case IDM_ABOUT:
@@ -225,22 +227,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case HOT_KEY_ID:
 		{
 			auto success = false;
-			auto title = L"¸”s‚µ‚Ü‚µ‚½";
-			auto msg = L"Œ´ˆö•s–¾‚ÌƒGƒ‰[‚Å‚·";
+			auto title = L"å¤±æ•—ã—ã¾ã—ãŸ";
+			auto msg = L"åŸå› ä¸æ˜ã®ã‚¨ãƒ©ãƒ¼ã§ã™";
 			auto hwnd = GetForegroundWindow();
 			if(hwnd == NULL) {
-				msg = L"Œ»İ‚ÌƒEƒCƒ“ƒhƒE‚ª“Á’è‚Å‚«‚Ü‚¹‚ñ";
+				msg = L"ç¾åœ¨ã®ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦ãŒç‰¹å®šã§ãã¾ã›ã‚“";
 			}
 			else {
 				auto style = GetWindowLong(hwnd, GWL_EXSTYLE);
 				if(style == 0) {
-					msg = L"ƒEƒCƒ“ƒhƒE‚Ìî•ñ‚ªæ“¾‚Å‚«‚Ü‚¹‚ñ";
+					msg = L"ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦ã®æƒ…å ±ãŒå–å¾—ã§ãã¾ã›ã‚“";
 				}
 				else {
 					auto topmost = (style & WS_EX_TOPMOST) ? true : false;
 					auto ret = SetWindowPos(hwnd, topmost ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 					if(!ret) {
-						msg = L"ƒEƒCƒ“ƒhƒE‚Ìî•ñ‚ªİ’è‚Å‚«‚Ü‚¹‚ñ";
+						msg = L"ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦ã®æƒ…å ±ãŒè¨­å®šã§ãã¾ã›ã‚“";
 					}
 					else {
 						FLASHWINFO fi = {};
@@ -251,7 +253,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						fi.dwFlags = FLASHW_TIMERNOFG;
 						FlashWindowEx(&fi);
 						success = true;
-						title = topmost ? L"‰ğœ‚µ‚Ü‚µ‚½" : L"Å‘O–Ê‚É‚µ‚Ü‚µ‚½";
+						title = topmost ? L"è§£é™¤ã—ã¾ã—ãŸ" : L"æœ€å‰é¢ã«ã—ã¾ã—ãŸ";
 						msg = L"";
 						//
 						auto len = GetWindowTextLength(hwnd);
