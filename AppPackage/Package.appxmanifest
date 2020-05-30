@@ -10,7 +10,7 @@
   <Identity
     Name="59756AkioTakahashi.PinWindow"
     Publisher="CN=7D993779-20F6-4607-AB0F-DD55CA8FC8F6"
-    Version="1.0.0.0" />
+    Version="1.0.8.0" />
 
   <Properties>
     <DisplayName>Pin Window</DisplayName>
