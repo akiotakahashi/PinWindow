@@ -42,9 +42,6 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="TopMostTool.ico">
-      <Filter>リソース ファイル</Filter>
-    </Image>
     <Image Include="summer-13.ico">
       <Filter>リソース ファイル</Filter>
     </Image>

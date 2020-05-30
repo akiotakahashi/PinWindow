@@ -22,5 +22,12 @@
 #include <memory.h>
 #include <tchar.h>
 
+// C++/WinRT
+#include <winrt/base.h>
+#include <winrt/Windows.ApplicationModel.h>
+
+#pragma comment(lib, "windowsapp")
+
 // TODO: プログラムに必要な追加ヘッダーをここで参照してください
 #include <strsafe.h>
+#include <functional>
