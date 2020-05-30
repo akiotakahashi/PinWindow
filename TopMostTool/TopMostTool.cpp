@@ -1,6 +1,9 @@
 ﻿#include "stdafx.h"
 #include "TopMostTool.h"
 
+using namespace winrt::Windows::Foundation;
+using namespace winrt::Windows::ApplicationModel;
+
 #define WM_TRAYICON (WM_USER + 1)
 
 #define HOT_KEY_ID 100001
@@ -11,6 +14,7 @@
 HINSTANCE hInst;                                // 現在のインターフェイス
 WCHAR szTitle[MAX_LOADSTRING];                  // タイトル バーのテキスト
 WCHAR szWindowClass[MAX_LOADSTRING];            // メイン ウィンドウ クラス名
+BOOL startupEnabled = FALSE;
 
 // このコード モジュールに含まれる関数の宣言を転送します:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -110,6 +114,57 @@ static BOOL ShowBalloon(HWND hWnd, DWORD dwInfoFlags, const wchar_t* title, cons
 	return Shell_NotifyIcon(NIM_MODIFY, &nid);
 }
 
+static void InvokeStartupAsync(std::function<void(StartupTask)> callback)
+{
+	try {
+		auto startupTaskAsync = StartupTask::GetAsync(L"StartupAppId");
+		startupTaskAsync.Completed([callback](auto&& task, auto&& status) {
+			if (status != AsyncStatus::Completed) { return; }
+			auto startupTask = task.GetResults();
+			callback(startupTask);
+		});
+	}
+	catch (...) {
+		callback(nullptr);
+	}
+}
+
+static void QueryStartup(std::function<void(bool)> callback)
+{
+	InvokeStartupAsync([callback](StartupTask task) {
+		if (!task) {
+			callback(false);
+			return;
+		}
+		callback(task.State() == StartupTaskState::Enabled);
+	});
+}
+
+static void RequestStartup(std::function<void(bool)> callback)
+{
+	InvokeStartupAsync([callback](StartupTask task) {
+		if (!task) {
+			callback(false);
+			return;
+		}
+		task.RequestEnableAsync().Completed([callback](auto&& task2, auto&& state) {
+			callback(state == AsyncStatus::Completed);
+		});
+	});
+}
+
+static void DisableStartup(std::function<void(bool)> callback)
+{
+	InvokeStartupAsync([callback](StartupTask task) {
+		if (!task) {
+			callback(false);
+			return;
+		}
+		task.Disable();
+		callback(true);
+	});
+}
+
 static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 {
 	// register hot-key
@@ -153,6 +208,10 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 			return false;
 		}
 	}
+	//
+	QueryStartup([](bool enabled) {
+		startupEnabled = enabled;
+	});
 	//
 	return true;
 }
@@ -207,6 +266,30 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 		case IDM_EXIT:
 			DestroyWindow(hWnd);
+			break;
+		case IDM_AUTO_STARTUP:
+			if (!startupEnabled) {
+				RequestStartup([hWnd](bool success) {
+					if (success) {
+						startupEnabled = success;
+					}
+					else {
+						const auto* pmsg = L"スタートアップ登録に失敗しました。";
+						MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
+					}
+				});
+			}
+			else {
+				DisableStartup([hWnd](bool success) {
+					if (success) {
+						startupEnabled = false;
+					}
+					else {
+						const auto* pmsg = L"スタートアップ解除に失敗しました。";
+						MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
+					}
+				});
+			}
 			break;
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
@@ -282,6 +365,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			POINT curPoint;
 			GetCursorPos(&curPoint);
 			HMENU hMenu = GetSubMenu(LoadMenu(NULL, MAKEINTRESOURCE(IDC_TOPMOSTTOOL)), 0);
+			CheckMenuItem(hMenu, IDM_AUTO_STARTUP, MF_BYCOMMAND | (startupEnabled ? MFS_CHECKED : MFS_UNCHECKED));
 			TrackPopupMenu(hMenu, 0, curPoint.x, curPoint.y, 0, hWnd, NULL);
 			break;
 		}
