@@ -189,13 +189,31 @@ static bool IsStartupEnabledState(StartupTaskState state)
 	return state == StartupTaskState::Enabled || state == StartupTaskState::EnabledByPolicy;
 }
 
-static bool AddTrayIcon(HWND hWnd, const wchar_t*& errormsg)
+// 文字列リソースは UI 言語に応じて ja-JP / en-US から選択される。
+static std::wstring LoadResString(UINT id)
+{
+	const wchar_t* p = nullptr;
+	auto len = LoadStringW(hInst, id, reinterpret_cast<LPWSTR>(&p), 0);
+	if(len <= 0 || !p) {
+		return std::wstring();
+	}
+	return std::wstring(p, len);
+}
+
+static void ShowMessage(HWND hWnd, UINT textId, UINT captionId, UINT type)
+{
+	auto text = LoadResString(textId);
+	auto caption = LoadResString(captionId);
+	MessageBox(hWnd, text.c_str(), caption.c_str(), type);
+}
+
+static bool AddTrayIcon(HWND hWnd, UINT& errorId)
 {
 	static HICON hIcon = nullptr;
 	if(!hIcon) {
 		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_DOLPHIN), LIM_SMALL, &hIcon);
 		if(FAILED(hr)) {
-			errormsg = L"アイコンが読み込めません。";
+			errorId = IDS_ERR_ICON_LOAD;
 			return false;
 		}
 	}
@@ -204,37 +222,37 @@ static bool AddTrayIcon(HWND hWnd, const wchar_t*& errormsg)
 	nid.hIcon = hIcon;
 	StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), szTitle);
 	if(!Shell_NotifyIcon(NIM_ADD, &nid)) {
-		errormsg = L"トレイアイコンが追加できませんでした。";
+		errorId = IDS_ERR_TRAY_ADD;
 		return false;
 	}
 	if(!Shell_NotifyIcon(NIM_SETVERSION, &nid)) {
-		errormsg = L"トレイアイコンバージョンの設定に失敗しました。";
+		errorId = IDS_ERR_TRAY_VERSION;
 		return false;
 	}
 	return true;
 }
 
-static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
+static bool InitializeApp(HWND hWnd, UINT& errorId)
 {
 	// register hot-key
 	auto pauseRegistered = RegisterHotKey(hWnd, HOT_KEY_ID_PAUSE, MOD_NOREPEAT, VK_PAUSE);
 	auto winDelRegistered = RegisterHotKey(hWnd, HOT_KEY_ID_WIN_DEL, MOD_NOREPEAT | MOD_WIN, VK_DELETE);
 	if(!pauseRegistered && !winDelRegistered) {
-		errormsg = L"ホットキーの登録に失敗しました。";
+		errorId = IDS_ERR_HOTKEY;
 		return false;
 	}
 	// add a system tray icon
-	if(!AddTrayIcon(hWnd, errormsg)) {
+	if(!AddTrayIcon(hWnd, errorId)) {
 		return false;
 	}
 	if(!pauseRegistered) {
-		ShowBalloon(hWnd, NIIF_WARNING, szTitle, L"Win+Del で最前面にします（Pause は登録できませんでした）");
+		ShowBalloon(hWnd, NIIF_WARNING, szTitle, LoadResString(IDS_BALLOON_WIN_DEL_ONLY).c_str());
 	}
 	else if(!winDelRegistered) {
-		ShowBalloon(hWnd, NIIF_WARNING, szTitle, L"Pause で最前面にします（Win+Del は登録できませんでした）");
+		ShowBalloon(hWnd, NIIF_WARNING, szTitle, LoadResString(IDS_BALLOON_PAUSE_ONLY).c_str());
 	}
 	else {
-		ShowBalloon(hWnd, NIIF_INFO, szTitle, L"Pause か Win+Del で最前面にします👍");
+		ShowBalloon(hWnd, NIIF_INFO, szTitle, LoadResString(IDS_BALLOON_READY).c_str());
 	}
 	//
 	QueryStartup(hWnd);
@@ -272,28 +290,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	// explorer.exe の再起動時に通知されるため、トレイアイコンを追加し直す。
 	static const UINT WM_TASKBARCREATED = RegisterWindowMessage(L"TaskbarCreated");
 	if(message == WM_TASKBARCREATED) {
-		const wchar_t* errmsg = nullptr;
-		AddTrayIcon(hWnd, errmsg);
+		UINT errorId = 0;
+		AddTrayIcon(hWnd, errorId);
 		return 0;
 	}
 	switch(message)
 	{
 	case WM_CREATE:
 	{
-		const wchar_t* errmsg = nullptr;
+		UINT errorId = 0;
 		SetLastError(0);
-		auto ok = InitializeApp(hWnd, errmsg);
+		auto ok = InitializeApp(hWnd, errorId);
 		if(!ok) {
 			auto errcode = GetLastError();
 			LPVOID lpMsgBuf = NULL;
 			auto len = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 				NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&lpMsgBuf, 0, NULL);
-			if(len == 0) {
-				const int SIZE = 256;
-				lpMsgBuf = LocalAlloc(LMEM_FIXED, SIZE);
-				wcscpy_s((wchar_t*)lpMsgBuf, SIZE / sizeof(wchar_t), L"エラー");
-			}
-			MessageBox(hWnd, errmsg, (const wchar_t*)lpMsgBuf, MB_OK | MB_ICONERROR);
+			auto errmsg = LoadResString(errorId);
+			auto caption = (len == 0) ? LoadResString(IDS_ERROR_CAPTION) : std::wstring((const wchar_t*)lpMsgBuf);
+			MessageBox(hWnd, errmsg.c_str(), caption.c_str(), MB_OK | MB_ICONERROR);
 			LocalFree(lpMsgBuf);
 			// -1 を返すとウインドウが破棄され、WM_DESTROY でトレイアイコンとホットキーが解放される。
 			return -1;
@@ -349,16 +364,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			startupEnabled = TRUE;
 		}
 		else if (lParam && state == StartupTaskState::DisabledByUser) {
-			const auto* pmsg = L"スタートアップはユーザーの操作により無効化されています。タスクマネージャーのスタートアップの設定で有効にしてください。";
-			MessageBox(hWnd, pmsg, szTitle, MB_OK | MB_ICONINFORMATION);
+			ShowMessage(hWnd, IDS_STARTUP_DISABLED_BY_USER, IDS_APP_TITLE, MB_OK | MB_ICONINFORMATION);
 		}
 		else if (lParam && state == StartupTaskState::DisabledByPolicy) {
-			const auto* pmsg = L"スタートアップはポリシーにより無効化されています。";
-			MessageBox(hWnd, pmsg, szTitle, MB_OK | MB_ICONINFORMATION);
+			ShowMessage(hWnd, IDS_STARTUP_DISABLED_BY_POLICY, IDS_APP_TITLE, MB_OK | MB_ICONINFORMATION);
 		}
 		else {
-			const auto* pmsg = L"スタートアップ登録に失敗しました。";
-			MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
+			ShowMessage(hWnd, IDS_STARTUP_ENABLE_FAILED, IDS_ERROR_CAPTION, MB_OK | MB_ICONERROR);
 		}
 		break;
 	}
@@ -367,8 +379,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			startupEnabled = FALSE;
 		}
 		else {
-			const auto* pmsg = L"スタートアップ解除に失敗しました。";
-			MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
+			ShowMessage(hWnd, IDS_STARTUP_DISABLE_FAILED, IDS_ERROR_CAPTION, MB_OK | MB_ICONERROR);
 		}
 		break;
 	case WM_HOTKEY:
@@ -378,28 +389,28 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case HOT_KEY_ID_WIN_DEL:
 		{
 			auto success = false;
-			auto title = L"失敗しました";
-			auto msg = L"原因不明のエラーです";
+			UINT titleId = IDS_TOGGLE_FAILED;
+			UINT msgId = IDS_TOGGLE_UNKNOWN_ERROR;
 			// バルーン本文は szInfo の長さで切り詰められるため、それを超えて取得する必要はない。
 			WCHAR windowText[ARRAYSIZE(NOTIFYICONDATA::szInfo)] = {};
 			auto hwnd = GetForegroundWindow();
 			if(hwnd == NULL) {
-				msg = L"現在のウインドウが特定できません";
+				msgId = IDS_TOGGLE_NO_FOREGROUND;
 			}
 			else if(IsExcludedWindow(hwnd, hWnd)) {
-				msg = L"このウインドウは対象外です";
+				msgId = IDS_TOGGLE_EXCLUDED;
 			}
 			else {
 				SetLastError(0);
 				auto style = GetWindowLong(hwnd, GWL_EXSTYLE);
 				if(style == 0 && GetLastError() != 0) {
-					msg = L"ウインドウの情報が取得できません";
+					msgId = IDS_TOGGLE_GET_FAILED;
 				}
 				else {
 					auto topmost = (style & WS_EX_TOPMOST) ? true : false;
 					auto ret = SetWindowPos(hwnd, topmost ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 					if(!ret) {
-						msg = L"ウインドウの情報が設定できません";
+						msgId = IDS_TOGGLE_SET_FAILED;
 					}
 					else {
 						FLASHWINFO fi = {};
@@ -410,13 +421,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						fi.dwFlags = FLASHW_CAPTION;
 						FlashWindowEx(&fi);
 						success = true;
-						title = topmost ? L"解除しました" : L"最前面にしました";
+						titleId = topmost ? IDS_TOGGLE_UNPINNED : IDS_TOGGLE_PINNED;
 						GetWindowText(hwnd, windowText, ARRAYSIZE(windowText));
-						msg = windowText;
 					}
 				}
 			}
-			ShowBalloon(hWnd, success ? NIIF_INFO : NIIF_ERROR, title, msg);
+			auto title = LoadResString(titleId);
+			auto msg = success ? std::wstring(windowText) : LoadResString(msgId);
+			ShowBalloon(hWnd, success ? NIIF_INFO : NIIF_ERROR, title.c_str(), msg.c_str());
 			break;
 		}
 		}
@@ -462,12 +474,14 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 		WCHAR text[64];
 		try {
 			auto version = Package::Current().Id().Version();
-			StringCchPrintf(text, ARRAYSIZE(text), L"%s, Version %u.%u.%u.%u",
+			auto format = LoadResString(IDS_ABOUT_VERSION);
+			StringCchPrintf(text, ARRAYSIZE(text), format.c_str(),
 				szTitle, version.Major, version.Minor, version.Build, version.Revision);
 		}
 		catch (...) {
 			// パッケージ ID を持たない状態 (exe の直接実行) では版数を取得できない。
-			StringCchPrintf(text, ARRAYSIZE(text), L"%s, Version 不明", szTitle);
+			auto format = LoadResString(IDS_ABOUT_VERSION_UNKNOWN);
+			StringCchPrintf(text, ARRAYSIZE(text), format.c_str(), szTitle);
 		}
 		SetDlgItemText(hDlg, IDC_VERSION_TEXT, text);
 		return (INT_PTR)TRUE;
