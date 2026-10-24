@@ -509,19 +509,21 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_INITDIALOG:
 	{
-		WCHAR text[64];
+		// 書式関数 (StringCchPrintf など) は CRT の書式出力処理一式を静的リンクし、
+		// exe が約 30 KB 増えるため、文字列の連結で組み立てる。
+		std::wstring versionText;
 		try {
 			auto version = Package::Current().Id().Version();
-			auto format = LoadResString(IDS_ABOUT_VERSION);
-			StringCchPrintf(text, ARRAYSIZE(text), format.c_str(),
-				szTitle, version.Major, version.Minor, version.Build, version.Revision);
+			versionText = LoadResString(IDS_ABOUT_VERSION) + L" "
+				+ std::to_wstring(version.Major) + L"." + std::to_wstring(version.Minor) + L"."
+				+ std::to_wstring(version.Build) + L"." + std::to_wstring(version.Revision);
 		}
 		catch (...) {
 			// パッケージ ID を持たない状態 (exe の直接実行) では版数を取得できない。
-			auto format = LoadResString(IDS_ABOUT_VERSION_UNKNOWN);
-			StringCchPrintf(text, ARRAYSIZE(text), format.c_str(), szTitle);
+			versionText = LoadResString(IDS_ABOUT_VERSION_UNKNOWN);
 		}
-		SetDlgItemText(hDlg, IDC_VERSION_TEXT, text);
+		auto text = std::wstring(szTitle) + L", " + versionText;
+		SetDlgItemText(hDlg, IDC_VERSION_TEXT, text.c_str());
 		return (INT_PTR)TRUE;
 	}
 	case WM_COMMAND:
