@@ -6,7 +6,8 @@ using namespace winrt::Windows::ApplicationModel;
 
 #define WM_TRAYICON (WM_USER + 1)
 
-#define HOT_KEY_ID 100001
+#define HOT_KEY_ID_PAUSE 1
+#define HOT_KEY_ID_WIN_DEL 2
 
 #define MAX_LOADSTRING 100
 
@@ -193,14 +194,11 @@ static bool AddTrayIcon(HWND hWnd, const wchar_t*& errormsg)
 static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 {
 	// register hot-key
-	{
-		BOOL ret = TRUE;
-		ret &= RegisterHotKey(hWnd, HOT_KEY_ID, MOD_NOREPEAT, VK_PAUSE);
-		ret &= RegisterHotKey(hWnd, HOT_KEY_ID, MOD_NOREPEAT | MOD_WIN, VK_DELETE);
-		if(!ret) {
-			errormsg = L"ホットキーの登録に失敗しました。";
-			return false;
-		}
+	auto pauseRegistered = RegisterHotKey(hWnd, HOT_KEY_ID_PAUSE, MOD_NOREPEAT, VK_PAUSE);
+	auto winDelRegistered = RegisterHotKey(hWnd, HOT_KEY_ID_WIN_DEL, MOD_NOREPEAT | MOD_WIN, VK_DELETE);
+	if(!pauseRegistered && !winDelRegistered) {
+		errormsg = L"ホットキーの登録に失敗しました。";
+		return false;
 	}
 	// clear a old icon if exists
 	{
@@ -211,7 +209,15 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 	if(!AddTrayIcon(hWnd, errormsg)) {
 		return false;
 	}
-	ShowBalloon(hWnd, NIIF_INFO, szTitle, L"Pause か Win+Del で最前面にします👍");
+	if(!pauseRegistered) {
+		ShowBalloon(hWnd, NIIF_WARNING, szTitle, L"Win+Del で最前面にします（Pause は登録できませんでした）");
+	}
+	else if(!winDelRegistered) {
+		ShowBalloon(hWnd, NIIF_WARNING, szTitle, L"Pause で最前面にします（Win+Del は登録できませんでした）");
+	}
+	else {
+		ShowBalloon(hWnd, NIIF_INFO, szTitle, L"Pause か Win+Del で最前面にします👍");
+	}
 	//
 	QueryStartup([](bool enabled) {
 		startupEnabled = enabled;
@@ -260,7 +266,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	}
 	case WM_DESTROY:
 	{
-		UnregisterHotKey(hWnd, HOT_KEY_ID);
+		UnregisterHotKey(hWnd, HOT_KEY_ID_PAUSE);
+		UnregisterHotKey(hWnd, HOT_KEY_ID_WIN_DEL);
 		auto nid = CreateNotifyIconData(hWnd);
 		Shell_NotifyIcon(NIM_DELETE, &nid);
 		PostQuitMessage(0);
@@ -318,7 +325,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_HOTKEY:
 		switch(wParam)
 		{
-		case HOT_KEY_ID:
+		case HOT_KEY_ID_PAUSE:
+		case HOT_KEY_ID_WIN_DEL:
 		{
 			auto success = false;
 			auto title = L"失敗しました";
