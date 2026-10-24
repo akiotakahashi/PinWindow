@@ -100,14 +100,12 @@ void PaintWindow(HWND hWnd, PAINTSTRUCT& ps, HDC hdc)
 
 static NOTIFYICONDATA CreateNotifyIconData(HWND hWnd, UINT uFlags = 0)
 {
-	static const GUID NID_GUID = { 0x9b16b146, 0x7936, 0x46ff,{ 0x84, 0x95, 0xe3, 0x1, 0x35, 0xcd, 0xd3, 0xab } };
 	NOTIFYICONDATA nid = {};
 	nid.cbSize = sizeof(nid);
 	nid.hWnd = hWnd;
 	nid.uID = 0;
 	nid.uVersion = NOTIFYICON_VERSION_4;
-	nid.uFlags = uFlags | NIF_SHOWTIP;// | NIF_GUID;
-	nid.guidItem = NID_GUID;
+	nid.uFlags = uFlags | NIF_SHOWTIP;
 	return nid;
 }
 
@@ -117,7 +115,6 @@ static BOOL ShowBalloon(HWND hWnd, DWORD dwInfoFlags, const wchar_t* title, cons
 	nid.dwInfoFlags = dwInfoFlags | NIIF_NOSOUND;
 	StringCchCopy(nid.szInfo, ARRAYSIZE(nid.szInfo), msg);
 	StringCchCopy(nid.szInfoTitle, ARRAYSIZE(nid.szInfoTitle), title);
-	nid.uTimeout = 1000;
 	return Shell_NotifyIcon(NIM_MODIFY, &nid);
 }
 
@@ -233,11 +230,6 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 	if(!pauseRegistered && !winDelRegistered) {
 		errormsg = L"ホットキーの登録に失敗しました。";
 		return false;
-	}
-	// clear a old icon if exists
-	{
-		auto nid = CreateNotifyIconData(hWnd);
-		Shell_NotifyIcon(NIM_DELETE, &nid);
 	}
 	// add a system tray icon
 	if(!AddTrayIcon(hWnd, errormsg)) {
