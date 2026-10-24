@@ -165,6 +165,31 @@ static void DisableStartup(std::function<void(bool)> callback)
 	});
 }
 
+static bool AddTrayIcon(HWND hWnd, const wchar_t*& errormsg)
+{
+	static HICON hIcon = nullptr;
+	if(!hIcon) {
+		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_DOLPHIN), LIM_SMALL, &hIcon);
+		if(FAILED(hr)) {
+			errormsg = L"アイコンが読み込めません。";
+			return false;
+		}
+	}
+	auto nid = CreateNotifyIconData(hWnd, NIF_MESSAGE | NIF_TIP | NIF_ICON);
+	nid.uCallbackMessage = WM_TRAYICON;
+	nid.hIcon = hIcon;
+	StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), szTitle);
+	if(!Shell_NotifyIcon(NIM_ADD, &nid)) {
+		errormsg = L"トレイアイコンが追加できませんでした。";
+		return false;
+	}
+	if(!Shell_NotifyIcon(NIM_SETVERSION, &nid)) {
+		errormsg = L"トレイアイコンバージョンの設定に失敗しました。";
+		return false;
+	}
+	return true;
+}
+
 static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 {
 	// register hot-key
@@ -183,31 +208,10 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 		Shell_NotifyIcon(NIM_DELETE, &nid);
 	}
 	// add a system tray icon
-	{
-		auto nid = CreateNotifyIconData(hWnd, NIF_MESSAGE | NIF_TIP | NIF_ICON);
-		nid.uCallbackMessage = WM_TRAYICON;
-		StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), szTitle);
-		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_DOLPHIN), LIM_SMALL, &(nid.hIcon));
-		if(FAILED(hr)) {
-			errormsg = L"アイコンが読み込めません。";
-			return false;
-		}
-		auto ret = Shell_NotifyIcon(NIM_ADD, &nid);
-		if(!ret) {
-			errormsg = L"トレイアイコンが追加できませんでした。";
-			return false;
-		}
-		ret = Shell_NotifyIcon(NIM_SETVERSION, &nid);
-		if(!ret) {
-			errormsg = L"トレイアイコンバージョンの設定に失敗しました。";
-			return false;
-		}
-		ret = ShowBalloon(hWnd, NIIF_INFO, szTitle, L"Pause か Win+Del で最前面にします👍");
-		if(!ret) {
-			errormsg = L"バルーン通知の表示に失敗しました。";
-			return false;
-		}
+	if(!AddTrayIcon(hWnd, errormsg)) {
+		return false;
 	}
+	ShowBalloon(hWnd, NIIF_INFO, szTitle, L"Pause か Win+Del で最前面にします👍");
 	//
 	QueryStartup([](bool enabled) {
 		startupEnabled = enabled;
@@ -218,6 +222,13 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	// explorer.exe の再起動時に通知されるため、トレイアイコンを追加し直す。
+	static const UINT WM_TASKBARCREATED = RegisterWindowMessage(L"TaskbarCreated");
+	if(message == WM_TASKBARCREATED) {
+		const wchar_t* errmsg = nullptr;
+		AddTrayIcon(hWnd, errmsg);
+		return 0;
+	}
 	switch(message)
 	{
 	case WM_CREATE:
@@ -237,8 +248,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			}
 			MessageBox(hWnd, errmsg, (const wchar_t*)lpMsgBuf, MB_OK | MB_ICONERROR);
 			LocalFree(lpMsgBuf);
-			PostQuitMessage(1);
-			return 0;
+			// -1 を返すとウインドウが破棄され、WM_DESTROY でトレイアイコンとホットキーが解放される。
+			return -1;
 		}
 		break;
 	}
@@ -356,14 +367,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_TRAYICON:
 	{
-		switch(lParam) {
+		// NOTIFYICON_VERSION_4 では LOWORD(lParam) がイベント、wParam がアンカー座標である。
+		switch(LOWORD(lParam)) {
 		case NIN_SELECT:
 		case NIN_KEYSELECT:
 		case WM_CONTEXTMENU:
-		case WM_RBUTTONDOWN:
 		{
-			POINT curPoint;
-			GetCursorPos(&curPoint);
+			POINT curPoint = { GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam) };
 			HMENU hMenu = GetSubMenu(LoadMenu(NULL, MAKEINTRESOURCE(IDC_TOPMOSTTOOL)), 0);
 			CheckMenuItem(hMenu, IDM_AUTO_STARTUP, MF_BYCOMMAND | (startupEnabled ? MFS_CHECKED : MFS_UNCHECKED));
 			TrackPopupMenu(hMenu, 0, curPoint.x, curPoint.y, 0, hWnd, NULL);

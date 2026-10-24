@@ -10,6 +10,7 @@
 #define WIN32_LEAN_AND_MEAN
 // Windows ヘッダー ファイル:
 #include <windows.h>
+#include <windowsx.h>
 #include <shellapi.h>
 #include <commctrl.h>
 
