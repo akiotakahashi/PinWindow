@@ -2,3 +2,5 @@ AppPackage/obj/
 AppPackage/bin/
 AppPackage/AppPackages/
 AppPackage/BundleArtifacts/
+.vs/
+*.user

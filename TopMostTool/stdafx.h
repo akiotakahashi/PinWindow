@@ -10,6 +10,7 @@
 #define WIN32_LEAN_AND_MEAN
 // Windows ヘッダー ファイル:
 #include <windows.h>
+#include <windowsx.h>
 #include <shellapi.h>
 #include <commctrl.h>
 
@@ -24,6 +25,7 @@
 
 // C++/WinRT
 #include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.ApplicationModel.h>
 
 #pragma comment(lib, "windowsapp")

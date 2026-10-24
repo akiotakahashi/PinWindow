@@ -6,7 +6,14 @@ using namespace winrt::Windows::ApplicationModel;
 
 #define WM_TRAYICON (WM_USER + 1)
 
-#define HOT_KEY_ID 100001
+// StartupTask の非同期操作の結果を UI スレッドへ渡すメッセージ。
+// lParam は操作の成否 (TRUE/FALSE)、wParam は StartupTaskState (成功時のみ有効)。
+#define WM_APP_STARTUP_QUERIED (WM_APP + 1)
+#define WM_APP_STARTUP_ENABLE_REQUESTED (WM_APP + 2)
+#define WM_APP_STARTUP_DISABLED (WM_APP + 3)
+
+#define HOT_KEY_ID_PAUSE 1
+#define HOT_KEY_ID_WIN_DEL 2
 
 #define MAX_LOADSTRING 100
 
@@ -114,13 +121,21 @@ static BOOL ShowBalloon(HWND hWnd, DWORD dwInfoFlags, const wchar_t* title, cons
 	return Shell_NotifyIcon(NIM_MODIFY, &nid);
 }
 
+// callback はスレッドプールのスレッドで呼び出される場合がある。
+// 取得に失敗した場合は nullptr を渡す。
 static void InvokeStartupAsync(std::function<void(StartupTask)> callback)
 {
 	try {
 		auto startupTaskAsync = StartupTask::GetAsync(L"StartupAppId");
 		startupTaskAsync.Completed([callback](auto&& task, auto&& status) {
-			if (status != AsyncStatus::Completed) { return; }
-			auto startupTask = task.GetResults();
+			StartupTask startupTask = nullptr;
+			if (status == AsyncStatus::Completed) {
+				try {
+					startupTask = task.GetResults();
+				}
+				catch (...) {
+				}
+			}
 			callback(startupTask);
 		});
 	}
@@ -129,53 +144,95 @@ static void InvokeStartupAsync(std::function<void(StartupTask)> callback)
 	}
 }
 
-static void QueryStartup(std::function<void(bool)> callback)
+static void QueryStartup(HWND hWnd)
 {
-	InvokeStartupAsync([callback](StartupTask task) {
+	InvokeStartupAsync([hWnd](StartupTask task) {
 		if (!task) {
-			callback(false);
+			PostMessage(hWnd, WM_APP_STARTUP_QUERIED, 0, FALSE);
 			return;
 		}
-		callback(task.State() == StartupTaskState::Enabled);
+		PostMessage(hWnd, WM_APP_STARTUP_QUERIED, static_cast<WPARAM>(task.State()), TRUE);
 	});
 }
 
-static void RequestStartup(std::function<void(bool)> callback)
+static void RequestStartup(HWND hWnd)
 {
-	InvokeStartupAsync([callback](StartupTask task) {
+	InvokeStartupAsync([hWnd](StartupTask task) {
 		if (!task) {
-			callback(false);
+			PostMessage(hWnd, WM_APP_STARTUP_ENABLE_REQUESTED, 0, FALSE);
 			return;
 		}
-		task.RequestEnableAsync().Completed([callback](auto&& task2, auto&& state) {
-			callback(state == AsyncStatus::Completed);
-		});
+		try {
+			task.RequestEnableAsync().Completed([hWnd](auto&& operation, auto&& status) {
+				if (status != AsyncStatus::Completed) {
+					PostMessage(hWnd, WM_APP_STARTUP_ENABLE_REQUESTED, 0, FALSE);
+					return;
+				}
+				PostMessage(hWnd, WM_APP_STARTUP_ENABLE_REQUESTED, static_cast<WPARAM>(operation.GetResults()), TRUE);
+			});
+		}
+		catch (...) {
+			PostMessage(hWnd, WM_APP_STARTUP_ENABLE_REQUESTED, 0, FALSE);
+		}
 	});
 }
 
-static void DisableStartup(std::function<void(bool)> callback)
+static void DisableStartup(HWND hWnd)
 {
-	InvokeStartupAsync([callback](StartupTask task) {
+	InvokeStartupAsync([hWnd](StartupTask task) {
 		if (!task) {
-			callback(false);
+			PostMessage(hWnd, WM_APP_STARTUP_DISABLED, 0, FALSE);
 			return;
 		}
-		task.Disable();
-		callback(true);
+		try {
+			task.Disable();
+		}
+		catch (...) {
+			PostMessage(hWnd, WM_APP_STARTUP_DISABLED, 0, FALSE);
+			return;
+		}
+		PostMessage(hWnd, WM_APP_STARTUP_DISABLED, 0, TRUE);
 	});
+}
+
+static bool IsStartupEnabledState(StartupTaskState state)
+{
+	return state == StartupTaskState::Enabled || state == StartupTaskState::EnabledByPolicy;
+}
+
+static bool AddTrayIcon(HWND hWnd, const wchar_t*& errormsg)
+{
+	static HICON hIcon = nullptr;
+	if(!hIcon) {
+		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_DOLPHIN), LIM_SMALL, &hIcon);
+		if(FAILED(hr)) {
+			errormsg = L"アイコンが読み込めません。";
+			return false;
+		}
+	}
+	auto nid = CreateNotifyIconData(hWnd, NIF_MESSAGE | NIF_TIP | NIF_ICON);
+	nid.uCallbackMessage = WM_TRAYICON;
+	nid.hIcon = hIcon;
+	StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), szTitle);
+	if(!Shell_NotifyIcon(NIM_ADD, &nid)) {
+		errormsg = L"トレイアイコンが追加できませんでした。";
+		return false;
+	}
+	if(!Shell_NotifyIcon(NIM_SETVERSION, &nid)) {
+		errormsg = L"トレイアイコンバージョンの設定に失敗しました。";
+		return false;
+	}
+	return true;
 }
 
 static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 {
 	// register hot-key
-	{
-		BOOL ret = TRUE;
-		ret &= RegisterHotKey(hWnd, HOT_KEY_ID, MOD_NOREPEAT, VK_PAUSE);
-		ret &= RegisterHotKey(hWnd, HOT_KEY_ID, MOD_NOREPEAT | MOD_WIN, VK_DELETE);
-		if(!ret) {
-			errormsg = L"ホットキーの登録に失敗しました。";
-			return false;
-		}
+	auto pauseRegistered = RegisterHotKey(hWnd, HOT_KEY_ID_PAUSE, MOD_NOREPEAT, VK_PAUSE);
+	auto winDelRegistered = RegisterHotKey(hWnd, HOT_KEY_ID_WIN_DEL, MOD_NOREPEAT | MOD_WIN, VK_DELETE);
+	if(!pauseRegistered && !winDelRegistered) {
+		errormsg = L"ホットキーの登録に失敗しました。";
+		return false;
 	}
 	// clear a old icon if exists
 	{
@@ -183,41 +240,58 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 		Shell_NotifyIcon(NIM_DELETE, &nid);
 	}
 	// add a system tray icon
-	{
-		auto nid = CreateNotifyIconData(hWnd, NIF_MESSAGE | NIF_TIP | NIF_ICON);
-		nid.uCallbackMessage = WM_TRAYICON;
-		StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), szTitle);
-		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_DOLPHIN), LIM_SMALL, &(nid.hIcon));
-		if(FAILED(hr)) {
-			errormsg = L"アイコンが読み込めません。";
-			return false;
-		}
-		auto ret = Shell_NotifyIcon(NIM_ADD, &nid);
-		if(!ret) {
-			errormsg = L"トレイアイコンが追加できませんでした。";
-			return false;
-		}
-		ret = Shell_NotifyIcon(NIM_SETVERSION, &nid);
-		if(!ret) {
-			errormsg = L"トレイアイコンバージョンの設定に失敗しました。";
-			return false;
-		}
-		ret = ShowBalloon(hWnd, NIIF_INFO, szTitle, L"Pause か Win+Del で最前面にします👍");
-		if(!ret) {
-			errormsg = L"バルーン通知の表示に失敗しました。";
-			return false;
-		}
+	if(!AddTrayIcon(hWnd, errormsg)) {
+		return false;
+	}
+	if(!pauseRegistered) {
+		ShowBalloon(hWnd, NIIF_WARNING, szTitle, L"Win+Del で最前面にします（Pause は登録できませんでした）");
+	}
+	else if(!winDelRegistered) {
+		ShowBalloon(hWnd, NIIF_WARNING, szTitle, L"Pause で最前面にします（Win+Del は登録できませんでした）");
+	}
+	else {
+		ShowBalloon(hWnd, NIIF_INFO, szTitle, L"Pause か Win+Del で最前面にします👍");
 	}
 	//
-	QueryStartup([](bool enabled) {
-		startupEnabled = enabled;
-	});
+	QueryStartup(hWnd);
 	//
 	return true;
 }
 
+// タスクバーとデスクトップはシェルが表示順序を管理するウインドウである。
+// 最前面属性を切り替えると、タスクバーが他のウインドウの背面に表示されるなどの影響があるため対象から除く。
+static bool IsExcludedWindow(HWND hwnd, HWND hWndSelf)
+{
+	if(hwnd == hWndSelf) {
+		return true;
+	}
+	WCHAR className[64] = {};
+	if(GetClassName(hwnd, className, ARRAYSIZE(className)) == 0) {
+		return false;
+	}
+	static const wchar_t* const EXCLUDED_CLASSES[] = {
+		L"Shell_TrayWnd",
+		L"Shell_SecondaryTrayWnd",
+		L"Progman",
+		L"WorkerW",
+	};
+	for(auto name : EXCLUDED_CLASSES) {
+		if(wcscmp(className, name) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	// explorer.exe の再起動時に通知されるため、トレイアイコンを追加し直す。
+	static const UINT WM_TASKBARCREATED = RegisterWindowMessage(L"TaskbarCreated");
+	if(message == WM_TASKBARCREATED) {
+		const wchar_t* errmsg = nullptr;
+		AddTrayIcon(hWnd, errmsg);
+		return 0;
+	}
 	switch(message)
 	{
 	case WM_CREATE:
@@ -237,8 +311,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			}
 			MessageBox(hWnd, errmsg, (const wchar_t*)lpMsgBuf, MB_OK | MB_ICONERROR);
 			LocalFree(lpMsgBuf);
-			PostQuitMessage(1);
-			return 0;
+			// -1 を返すとウインドウが破棄され、WM_DESTROY でトレイアイコンとホットキーが解放される。
+			return -1;
 		}
 		break;
 	}
@@ -249,7 +323,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	}
 	case WM_DESTROY:
 	{
-		UnregisterHotKey(hWnd, HOT_KEY_ID);
+		UnregisterHotKey(hWnd, HOT_KEY_ID_PAUSE);
+		UnregisterHotKey(hWnd, HOT_KEY_ID_WIN_DEL);
 		auto nid = CreateNotifyIconData(hWnd);
 		Shell_NotifyIcon(NIM_DELETE, &nid);
 		PostQuitMessage(0);
@@ -269,26 +344,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 		case IDM_AUTO_STARTUP:
 			if (!startupEnabled) {
-				RequestStartup([hWnd](bool success) {
-					if (success) {
-						startupEnabled = success;
-					}
-					else {
-						const auto* pmsg = L"スタートアップ登録に失敗しました。";
-						MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
-					}
-				});
+				RequestStartup(hWnd);
 			}
 			else {
-				DisableStartup([hWnd](bool success) {
-					if (success) {
-						startupEnabled = false;
-					}
-					else {
-						const auto* pmsg = L"スタートアップ解除に失敗しました。";
-						MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
-					}
-				});
+				DisableStartup(hWnd);
 			}
 			break;
 		default:
@@ -296,6 +355,38 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	}
+	case WM_APP_STARTUP_QUERIED:
+		startupEnabled = lParam && IsStartupEnabledState(static_cast<StartupTaskState>(wParam));
+		break;
+	case WM_APP_STARTUP_ENABLE_REQUESTED:
+	{
+		auto state = static_cast<StartupTaskState>(wParam);
+		if (lParam && IsStartupEnabledState(state)) {
+			startupEnabled = TRUE;
+		}
+		else if (lParam && state == StartupTaskState::DisabledByUser) {
+			const auto* pmsg = L"スタートアップはユーザーの操作により無効化されています。タスクマネージャーのスタートアップの設定で有効にしてください。";
+			MessageBox(hWnd, pmsg, szTitle, MB_OK | MB_ICONINFORMATION);
+		}
+		else if (lParam && state == StartupTaskState::DisabledByPolicy) {
+			const auto* pmsg = L"スタートアップはポリシーにより無効化されています。";
+			MessageBox(hWnd, pmsg, szTitle, MB_OK | MB_ICONINFORMATION);
+		}
+		else {
+			const auto* pmsg = L"スタートアップ登録に失敗しました。";
+			MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
+		}
+		break;
+	}
+	case WM_APP_STARTUP_DISABLED:
+		if (lParam) {
+			startupEnabled = FALSE;
+		}
+		else {
+			const auto* pmsg = L"スタートアップ解除に失敗しました。";
+			MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
+		}
+		break;
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps;
@@ -307,18 +398,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_HOTKEY:
 		switch(wParam)
 		{
-		case HOT_KEY_ID:
+		case HOT_KEY_ID_PAUSE:
+		case HOT_KEY_ID_WIN_DEL:
 		{
 			auto success = false;
 			auto title = L"失敗しました";
 			auto msg = L"原因不明のエラーです";
+			// バルーン本文は szInfo の長さで切り詰められるため、それを超えて取得する必要はない。
+			WCHAR windowText[ARRAYSIZE(NOTIFYICONDATA::szInfo)] = {};
 			auto hwnd = GetForegroundWindow();
 			if(hwnd == NULL) {
 				msg = L"現在のウインドウが特定できません";
 			}
+			else if(IsExcludedWindow(hwnd, hWnd)) {
+				msg = L"このウインドウは対象外です";
+			}
 			else {
+				SetLastError(0);
 				auto style = GetWindowLong(hwnd, GWL_EXSTYLE);
-				if(style == 0) {
+				if(style == 0 && GetLastError() != 0) {
 					msg = L"ウインドウの情報が取得できません";
 				}
 				else {
@@ -333,19 +431,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						fi.hwnd = hwnd;
 						fi.uCount = 3;
 						fi.dwTimeout = 0;
-						fi.dwFlags = FLASHW_TIMERNOFG;
+						fi.dwFlags = FLASHW_CAPTION;
 						FlashWindowEx(&fi);
 						success = true;
 						title = topmost ? L"解除しました" : L"最前面にしました";
-						msg = L"";
-						//
-						auto len = GetWindowTextLength(hwnd);
-						if(len > 0) {
-							len += 1;
-							auto buf = (WCHAR*)_malloca(len * sizeof(WCHAR));
-							GetWindowText(hwnd, buf, len);
-							msg = buf;
-						}
+						GetWindowText(hwnd, windowText, ARRAYSIZE(windowText));
+						msg = windowText;
 					}
 				}
 			}
@@ -356,17 +447,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_TRAYICON:
 	{
-		switch(lParam) {
+		// NOTIFYICON_VERSION_4 では LOWORD(lParam) がイベント、wParam がアンカー座標である。
+		switch(LOWORD(lParam)) {
 		case NIN_SELECT:
 		case NIN_KEYSELECT:
 		case WM_CONTEXTMENU:
-		case WM_RBUTTONDOWN:
 		{
-			POINT curPoint;
-			GetCursorPos(&curPoint);
-			HMENU hMenu = GetSubMenu(LoadMenu(NULL, MAKEINTRESOURCE(IDC_TOPMOSTTOOL)), 0);
+			POINT curPoint = { GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam) };
+			auto hMenuBar = LoadMenu(hInst, MAKEINTRESOURCE(IDC_TOPMOSTTOOL));
+			if(!hMenuBar) {
+				break;
+			}
+			auto hMenu = GetSubMenu(hMenuBar, 0);
 			CheckMenuItem(hMenu, IDM_AUTO_STARTUP, MF_BYCOMMAND | (startupEnabled ? MFS_CHECKED : MFS_UNCHECKED));
+			// 前面にしないと、メニュー外をクリックしてもメニューが閉じない。
+			SetForegroundWindow(hWnd);
 			TrackPopupMenu(hMenu, 0, curPoint.x, curPoint.y, 0, hWnd, NULL);
+			PostMessage(hWnd, WM_NULL, 0, 0);
+			DestroyMenu(hMenuBar);
 			break;
 		}
 		}
@@ -384,7 +482,20 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	switch(message)
 	{
 	case WM_INITDIALOG:
+	{
+		WCHAR text[64];
+		try {
+			auto version = Package::Current().Id().Version();
+			StringCchPrintf(text, ARRAYSIZE(text), L"%s, Version %u.%u.%u.%u",
+				szTitle, version.Major, version.Minor, version.Build, version.Revision);
+		}
+		catch (...) {
+			// パッケージ ID を持たない状態 (exe の直接実行) では版数を取得できない。
+			StringCchPrintf(text, ARRAYSIZE(text), L"%s, Version 不明", szTitle);
+		}
+		SetDlgItemText(hDlg, IDC_VERSION_TEXT, text);
 		return (INT_PTR)TRUE;
+	}
 	case WM_COMMAND:
 		if(LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
 		{
