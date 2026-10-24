@@ -48,15 +48,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 		return FALSE;
 	}
 
-	auto hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_TOPMOSTTOOL));
 	MSG msg;
 	while(GetMessage(&msg, nullptr, 0, 0))
 	{
-		if(!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
-		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
 	}
 	return (int)msg.wParam;
 }
@@ -73,7 +69,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_DOLPHIN));
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_TOPMOSTTOOL);
+	wcex.lpszMenuName = nullptr;
 	wcex.lpszClassName = szWindowClass;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_DOLPHIN));
 	return RegisterClassExW(&wcex);
@@ -92,10 +88,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	ShowWindow(hWnd, SW_HIDE /*nCmdShow*/);
 	UpdateWindow(hWnd);
 	return TRUE;
-}
-
-void PaintWindow(HWND hWnd, PAINTSTRUCT& ps, HDC hdc)
-{
 }
 
 static NOTIFYICONDATA CreateNotifyIconData(HWND hWnd, UINT uFlags = 0)
@@ -379,14 +371,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
 		}
 		break;
-	case WM_PAINT:
-	{
-		PAINTSTRUCT ps;
-		auto hdc = BeginPaint(hWnd, &ps);
-		PaintWindow(hWnd, ps, hdc);
-		EndPaint(hWnd, &ps);
-		break;
-	}
 	case WM_HOTKEY:
 		switch(wParam)
 		{
