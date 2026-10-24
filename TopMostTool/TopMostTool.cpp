@@ -6,6 +6,12 @@ using namespace winrt::Windows::ApplicationModel;
 
 #define WM_TRAYICON (WM_USER + 1)
 
+// StartupTask の非同期操作の結果を UI スレッドへ渡すメッセージ。
+// lParam は操作の成否 (TRUE/FALSE)、wParam は StartupTaskState (成功時のみ有効)。
+#define WM_APP_STARTUP_QUERIED (WM_APP + 1)
+#define WM_APP_STARTUP_ENABLE_REQUESTED (WM_APP + 2)
+#define WM_APP_STARTUP_DISABLED (WM_APP + 3)
+
 #define HOT_KEY_ID_PAUSE 1
 #define HOT_KEY_ID_WIN_DEL 2
 
@@ -115,13 +121,21 @@ static BOOL ShowBalloon(HWND hWnd, DWORD dwInfoFlags, const wchar_t* title, cons
 	return Shell_NotifyIcon(NIM_MODIFY, &nid);
 }
 
+// callback はスレッドプールのスレッドで呼び出される場合がある。
+// 取得に失敗した場合は nullptr を渡す。
 static void InvokeStartupAsync(std::function<void(StartupTask)> callback)
 {
 	try {
 		auto startupTaskAsync = StartupTask::GetAsync(L"StartupAppId");
 		startupTaskAsync.Completed([callback](auto&& task, auto&& status) {
-			if (status != AsyncStatus::Completed) { return; }
-			auto startupTask = task.GetResults();
+			StartupTask startupTask = nullptr;
+			if (status == AsyncStatus::Completed) {
+				try {
+					startupTask = task.GetResults();
+				}
+				catch (...) {
+				}
+			}
 			callback(startupTask);
 		});
 	}
@@ -130,40 +144,60 @@ static void InvokeStartupAsync(std::function<void(StartupTask)> callback)
 	}
 }
 
-static void QueryStartup(std::function<void(bool)> callback)
+static void QueryStartup(HWND hWnd)
 {
-	InvokeStartupAsync([callback](StartupTask task) {
+	InvokeStartupAsync([hWnd](StartupTask task) {
 		if (!task) {
-			callback(false);
+			PostMessage(hWnd, WM_APP_STARTUP_QUERIED, 0, FALSE);
 			return;
 		}
-		callback(task.State() == StartupTaskState::Enabled);
+		PostMessage(hWnd, WM_APP_STARTUP_QUERIED, static_cast<WPARAM>(task.State()), TRUE);
 	});
 }
 
-static void RequestStartup(std::function<void(bool)> callback)
+static void RequestStartup(HWND hWnd)
 {
-	InvokeStartupAsync([callback](StartupTask task) {
+	InvokeStartupAsync([hWnd](StartupTask task) {
 		if (!task) {
-			callback(false);
+			PostMessage(hWnd, WM_APP_STARTUP_ENABLE_REQUESTED, 0, FALSE);
 			return;
 		}
-		task.RequestEnableAsync().Completed([callback](auto&& task2, auto&& state) {
-			callback(state == AsyncStatus::Completed);
-		});
+		try {
+			task.RequestEnableAsync().Completed([hWnd](auto&& operation, auto&& status) {
+				if (status != AsyncStatus::Completed) {
+					PostMessage(hWnd, WM_APP_STARTUP_ENABLE_REQUESTED, 0, FALSE);
+					return;
+				}
+				PostMessage(hWnd, WM_APP_STARTUP_ENABLE_REQUESTED, static_cast<WPARAM>(operation.GetResults()), TRUE);
+			});
+		}
+		catch (...) {
+			PostMessage(hWnd, WM_APP_STARTUP_ENABLE_REQUESTED, 0, FALSE);
+		}
 	});
 }
 
-static void DisableStartup(std::function<void(bool)> callback)
+static void DisableStartup(HWND hWnd)
 {
-	InvokeStartupAsync([callback](StartupTask task) {
+	InvokeStartupAsync([hWnd](StartupTask task) {
 		if (!task) {
-			callback(false);
+			PostMessage(hWnd, WM_APP_STARTUP_DISABLED, 0, FALSE);
 			return;
 		}
-		task.Disable();
-		callback(true);
+		try {
+			task.Disable();
+		}
+		catch (...) {
+			PostMessage(hWnd, WM_APP_STARTUP_DISABLED, 0, FALSE);
+			return;
+		}
+		PostMessage(hWnd, WM_APP_STARTUP_DISABLED, 0, TRUE);
 	});
+}
+
+static bool IsStartupEnabledState(StartupTaskState state)
+{
+	return state == StartupTaskState::Enabled || state == StartupTaskState::EnabledByPolicy;
 }
 
 static bool AddTrayIcon(HWND hWnd, const wchar_t*& errormsg)
@@ -219,9 +253,7 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 		ShowBalloon(hWnd, NIIF_INFO, szTitle, L"Pause か Win+Del で最前面にします👍");
 	}
 	//
-	QueryStartup([](bool enabled) {
-		startupEnabled = enabled;
-	});
+	QueryStartup(hWnd);
 	//
 	return true;
 }
@@ -312,26 +344,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 		case IDM_AUTO_STARTUP:
 			if (!startupEnabled) {
-				RequestStartup([hWnd](bool success) {
-					if (success) {
-						startupEnabled = success;
-					}
-					else {
-						const auto* pmsg = L"スタートアップ登録に失敗しました。";
-						MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
-					}
-				});
+				RequestStartup(hWnd);
 			}
 			else {
-				DisableStartup([hWnd](bool success) {
-					if (success) {
-						startupEnabled = false;
-					}
-					else {
-						const auto* pmsg = L"スタートアップ解除に失敗しました。";
-						MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
-					}
-				});
+				DisableStartup(hWnd);
 			}
 			break;
 		default:
@@ -339,6 +355,38 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	}
+	case WM_APP_STARTUP_QUERIED:
+		startupEnabled = lParam && IsStartupEnabledState(static_cast<StartupTaskState>(wParam));
+		break;
+	case WM_APP_STARTUP_ENABLE_REQUESTED:
+	{
+		auto state = static_cast<StartupTaskState>(wParam);
+		if (lParam && IsStartupEnabledState(state)) {
+			startupEnabled = TRUE;
+		}
+		else if (lParam && state == StartupTaskState::DisabledByUser) {
+			const auto* pmsg = L"スタートアップはユーザーの操作により無効化されています。タスクマネージャーのスタートアップの設定で有効にしてください。";
+			MessageBox(hWnd, pmsg, szTitle, MB_OK | MB_ICONINFORMATION);
+		}
+		else if (lParam && state == StartupTaskState::DisabledByPolicy) {
+			const auto* pmsg = L"スタートアップはポリシーにより無効化されています。";
+			MessageBox(hWnd, pmsg, szTitle, MB_OK | MB_ICONINFORMATION);
+		}
+		else {
+			const auto* pmsg = L"スタートアップ登録に失敗しました。";
+			MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
+		}
+		break;
+	}
+	case WM_APP_STARTUP_DISABLED:
+		if (lParam) {
+			startupEnabled = FALSE;
+		}
+		else {
+			const auto* pmsg = L"スタートアップ解除に失敗しました。";
+			MessageBox(hWnd, pmsg, L"エラー", MB_OK | MB_ICONERROR);
+		}
+		break;
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps;
