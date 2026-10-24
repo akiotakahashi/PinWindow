@@ -33,6 +33,7 @@
 #define IDS_STARTUP_DISABLE_FAILED      219
 #define IDS_ABOUT_VERSION               220
 #define IDS_ABOUT_VERSION_UNKNOWN       221
+#define IDS_ALREADY_RUNNING             222
 #define IDM_AUTO_STARTUP                32774
 #define IDC_VERSION_TEXT                1000
 #define IDC_STATIC                      -1
@@ -45,6 +46,6 @@
 #define _APS_NEXT_RESOURCE_VALUE        130
 #define _APS_NEXT_COMMAND_VALUE         32775
 #define _APS_NEXT_CONTROL_VALUE         1001
-#define _APS_NEXT_SYMED_VALUE           222
+#define _APS_NEXT_SYMED_VALUE           223
 #endif
 #endif

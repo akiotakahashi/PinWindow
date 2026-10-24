@@ -28,6 +28,7 @@ ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+static std::wstring LoadResString(UINT id);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_opt_ HINSTANCE hPrevInstance,
@@ -37,14 +38,29 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
+	hInst = hInstance; // グローバル変数にインスタンス処理を格納します。
+
 	// グローバル文字列を初期化しています。
 	LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
 	LoadStringW(hInstance, IDC_TOPMOSTTOOL, szWindowClass, MAX_LOADSTRING);
+
+	// 2 つ目のプロセスはホットキーを登録できないため、起動済みである旨を通知して終了する。
+	auto hMutex = CreateMutexW(nullptr, FALSE, L"Local\\59756AkioTakahashi.PinWindow");
+	if(hMutex && GetLastError() == ERROR_ALREADY_EXISTS)
+	{
+		auto text = LoadResString(IDS_ALREADY_RUNNING);
+		MessageBox(nullptr, text.c_str(), szTitle, MB_OK | MB_ICONINFORMATION);
+		CloseHandle(hMutex);
+		return 0;
+	}
 
 	// アプリケーションの初期化を実行します:
 	MyRegisterClass(hInstance);
 	if(!InitInstance(hInstance, nCmdShow))
 	{
+		if(hMutex) {
+			CloseHandle(hMutex);
+		}
 		return FALSE;
 	}
 
@@ -53,6 +69,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	{
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
+	}
+	if(hMutex) {
+		CloseHandle(hMutex);
 	}
 	return (int)msg.wParam;
 }
@@ -77,7 +96,6 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-	hInst = hInstance; // グローバル変数にインスタンス処理を格納します。
 	auto hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT, CW_USEDEFAULT, 320, 240,
 		nullptr, nullptr, hInstance, nullptr);
