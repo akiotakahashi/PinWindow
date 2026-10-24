@@ -226,6 +226,31 @@ static bool InitializeApp(HWND hWnd, const wchar_t*& errormsg)
 	return true;
 }
 
+// タスクバーとデスクトップはシェルが表示順序を管理するウインドウである。
+// 最前面属性を切り替えると、タスクバーが他のウインドウの背面に表示されるなどの影響があるため対象から除く。
+static bool IsExcludedWindow(HWND hwnd, HWND hWndSelf)
+{
+	if(hwnd == hWndSelf) {
+		return true;
+	}
+	WCHAR className[64] = {};
+	if(GetClassName(hwnd, className, ARRAYSIZE(className)) == 0) {
+		return false;
+	}
+	static const wchar_t* const EXCLUDED_CLASSES[] = {
+		L"Shell_TrayWnd",
+		L"Shell_SecondaryTrayWnd",
+		L"Progman",
+		L"WorkerW",
+	};
+	for(auto name : EXCLUDED_CLASSES) {
+		if(wcscmp(className, name) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	// explorer.exe の再起動時に通知されるため、トレイアイコンを追加し直す。
@@ -331,13 +356,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			auto success = false;
 			auto title = L"失敗しました";
 			auto msg = L"原因不明のエラーです";
+			// バルーン本文は szInfo の長さで切り詰められるため、それを超えて取得する必要はない。
+			WCHAR windowText[ARRAYSIZE(NOTIFYICONDATA::szInfo)] = {};
 			auto hwnd = GetForegroundWindow();
 			if(hwnd == NULL) {
 				msg = L"現在のウインドウが特定できません";
 			}
+			else if(IsExcludedWindow(hwnd, hWnd)) {
+				msg = L"このウインドウは対象外です";
+			}
 			else {
+				SetLastError(0);
 				auto style = GetWindowLong(hwnd, GWL_EXSTYLE);
-				if(style == 0) {
+				if(style == 0 && GetLastError() != 0) {
 					msg = L"ウインドウの情報が取得できません";
 				}
 				else {
@@ -352,19 +383,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						fi.hwnd = hwnd;
 						fi.uCount = 3;
 						fi.dwTimeout = 0;
-						fi.dwFlags = FLASHW_TIMERNOFG;
+						fi.dwFlags = FLASHW_CAPTION;
 						FlashWindowEx(&fi);
 						success = true;
 						title = topmost ? L"解除しました" : L"最前面にしました";
-						msg = L"";
-						//
-						auto len = GetWindowTextLength(hwnd);
-						if(len > 0) {
-							len += 1;
-							auto buf = (WCHAR*)_malloca(len * sizeof(WCHAR));
-							GetWindowText(hwnd, buf, len);
-							msg = buf;
-						}
+						GetWindowText(hwnd, windowText, ARRAYSIZE(windowText));
+						msg = windowText;
 					}
 				}
 			}
