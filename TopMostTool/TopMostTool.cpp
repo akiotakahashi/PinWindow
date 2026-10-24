@@ -482,7 +482,20 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	switch(message)
 	{
 	case WM_INITDIALOG:
+	{
+		WCHAR text[64];
+		try {
+			auto version = Package::Current().Id().Version();
+			StringCchPrintf(text, ARRAYSIZE(text), L"%s, Version %u.%u.%u.%u",
+				szTitle, version.Major, version.Minor, version.Build, version.Revision);
+		}
+		catch (...) {
+			// パッケージ ID を持たない状態 (exe の直接実行) では版数を取得できない。
+			StringCchPrintf(text, ARRAYSIZE(text), L"%s, Version 不明", szTitle);
+		}
+		SetDlgItemText(hDlg, IDC_VERSION_TEXT, text);
 		return (INT_PTR)TRUE;
+	}
 	case WM_COMMAND:
 		if(LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
 		{
