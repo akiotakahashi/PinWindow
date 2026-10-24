@@ -24,6 +24,7 @@
 
 // C++/WinRT
 #include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.ApplicationModel.h>
 
 #pragma comment(lib, "windowsapp")
