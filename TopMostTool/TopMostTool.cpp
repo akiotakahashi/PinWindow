@@ -374,9 +374,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case WM_CONTEXTMENU:
 		{
 			POINT curPoint = { GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam) };
-			HMENU hMenu = GetSubMenu(LoadMenu(NULL, MAKEINTRESOURCE(IDC_TOPMOSTTOOL)), 0);
+			auto hMenuBar = LoadMenu(hInst, MAKEINTRESOURCE(IDC_TOPMOSTTOOL));
+			if(!hMenuBar) {
+				break;
+			}
+			auto hMenu = GetSubMenu(hMenuBar, 0);
 			CheckMenuItem(hMenu, IDM_AUTO_STARTUP, MF_BYCOMMAND | (startupEnabled ? MFS_CHECKED : MFS_UNCHECKED));
+			// 前面にしないと、メニュー外をクリックしてもメニューが閉じない。
+			SetForegroundWindow(hWnd);
 			TrackPopupMenu(hMenu, 0, curPoint.x, curPoint.y, 0, hWnd, NULL);
+			PostMessage(hWnd, WM_NULL, 0, 0);
+			DestroyMenu(hMenuBar);
 			break;
 		}
 		}
