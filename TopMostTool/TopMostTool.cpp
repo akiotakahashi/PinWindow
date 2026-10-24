@@ -241,6 +241,8 @@ static std::wstring FormatSystemMessage(DWORD code)
 		nullptr, code, 0, reinterpret_cast<LPWSTR>(&buf), 0, nullptr);
 	std::wstring text = (len > 0 && buf) ? std::wstring(buf, len) : std::wstring();
 	LocalFree(buf);
+	auto end = text.find_last_not_of(L" \r\n");
+	text.erase(end == std::wstring::npos ? 0 : end + 1);
 	return text;
 }
 
