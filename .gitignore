@@ -4,3 +4,4 @@ AppPackage/AppPackages/
 AppPackage/BundleArtifacts/
 .vs/
 *.user
+/AppPackage/AppPackage.assets.cache
