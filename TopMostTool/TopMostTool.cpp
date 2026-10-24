@@ -207,13 +207,32 @@ static void ShowMessage(HWND hWnd, UINT textId, UINT captionId, UINT type)
 	MessageBox(hWnd, text.c_str(), caption.c_str(), type);
 }
 
-static bool AddTrayIcon(HWND hWnd, UINT& errorId)
+struct AppError
+{
+	UINT messageId = 0;
+	DWORD code = 0;     // 失敗した API の Win32 エラーコードまたは HRESULT。0 は詳細なし。
+};
+
+static std::wstring FormatSystemMessage(DWORD code)
+{
+	if(code == 0) {
+		return std::wstring();
+	}
+	LPWSTR buf = nullptr;
+	auto len = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+		nullptr, code, 0, reinterpret_cast<LPWSTR>(&buf), 0, nullptr);
+	std::wstring text = (len > 0 && buf) ? std::wstring(buf, len) : std::wstring();
+	LocalFree(buf);
+	return text;
+}
+
+static bool AddTrayIcon(HWND hWnd, AppError& error)
 {
 	static HICON hIcon = nullptr;
 	if(!hIcon) {
 		auto hr = LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_DOLPHIN), LIM_SMALL, &hIcon);
 		if(FAILED(hr)) {
-			errorId = IDS_ERR_ICON_LOAD;
+			error = { IDS_ERR_ICON_LOAD, static_cast<DWORD>(hr) };
 			return false;
 		}
 	}
@@ -221,28 +240,30 @@ static bool AddTrayIcon(HWND hWnd, UINT& errorId)
 	nid.uCallbackMessage = WM_TRAYICON;
 	nid.hIcon = hIcon;
 	StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), szTitle);
+	SetLastError(0);
 	if(!Shell_NotifyIcon(NIM_ADD, &nid)) {
-		errorId = IDS_ERR_TRAY_ADD;
+		error = { IDS_ERR_TRAY_ADD, GetLastError() };
 		return false;
 	}
+	SetLastError(0);
 	if(!Shell_NotifyIcon(NIM_SETVERSION, &nid)) {
-		errorId = IDS_ERR_TRAY_VERSION;
+		error = { IDS_ERR_TRAY_VERSION, GetLastError() };
 		return false;
 	}
 	return true;
 }
 
-static bool InitializeApp(HWND hWnd, UINT& errorId)
+static bool InitializeApp(HWND hWnd, AppError& error)
 {
 	// register hot-key
 	auto pauseRegistered = RegisterHotKey(hWnd, HOT_KEY_ID_PAUSE, MOD_NOREPEAT, VK_PAUSE);
 	auto winDelRegistered = RegisterHotKey(hWnd, HOT_KEY_ID_WIN_DEL, MOD_NOREPEAT | MOD_WIN, VK_DELETE);
 	if(!pauseRegistered && !winDelRegistered) {
-		errorId = IDS_ERR_HOTKEY;
+		error = { IDS_ERR_HOTKEY, GetLastError() };
 		return false;
 	}
 	// add a system tray icon
-	if(!AddTrayIcon(hWnd, errorId)) {
+	if(!AddTrayIcon(hWnd, error)) {
 		return false;
 	}
 	if(!pauseRegistered) {
@@ -290,26 +311,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	// explorer.exe の再起動時に通知されるため、トレイアイコンを追加し直す。
 	static const UINT WM_TASKBARCREATED = RegisterWindowMessage(L"TaskbarCreated");
 	if(message == WM_TASKBARCREATED) {
-		UINT errorId = 0;
-		AddTrayIcon(hWnd, errorId);
+		AppError error;
+		AddTrayIcon(hWnd, error);
 		return 0;
 	}
 	switch(message)
 	{
 	case WM_CREATE:
 	{
-		UINT errorId = 0;
-		SetLastError(0);
-		auto ok = InitializeApp(hWnd, errorId);
+		AppError error;
+		auto ok = InitializeApp(hWnd, error);
 		if(!ok) {
-			auto errcode = GetLastError();
-			LPVOID lpMsgBuf = NULL;
-			auto len = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-				NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&lpMsgBuf, 0, NULL);
-			auto errmsg = LoadResString(errorId);
-			auto caption = (len == 0) ? LoadResString(IDS_ERROR_CAPTION) : std::wstring((const wchar_t*)lpMsgBuf);
-			MessageBox(hWnd, errmsg.c_str(), caption.c_str(), MB_OK | MB_ICONERROR);
-			LocalFree(lpMsgBuf);
+			auto text = LoadResString(error.messageId);
+			auto detail = FormatSystemMessage(error.code);
+			if(!detail.empty()) {
+				text += L"\n\n" + detail;
+			}
+			MessageBox(hWnd, text.c_str(), szTitle, MB_OK | MB_ICONERROR);
 			// -1 を返すとウインドウが破棄され、WM_DESTROY でトレイアイコンとホットキーが解放される。
 			return -1;
 		}
